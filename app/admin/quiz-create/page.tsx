@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import QuestionBulkImporter from "@/components/admin/QuestionBulkImporter";
+import type { ParsedQuestion } from "@/lib/parseQuestionsFile";
 
 /* ------------------------------------------------------------------ */
 /*  TYPES                                                              */
