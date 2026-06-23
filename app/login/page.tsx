@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -118,13 +119,13 @@ const LoginPage = () => {
 
         <p className="mt-5 text-center text-[11px] leading-relaxed text-white/40">
           By continuing, you agree to our{" "}
-          <span className="text-white/70 underline-offset-2 hover:underline">
+          <Link href="/legal/terms" className="text-white/70 underline-offset-2 hover:underline">
             Terms of Service
-          </span>{" "}
+          </Link>{" "}
           and{" "}
-          <span className="text-white/70 underline-offset-2 hover:underline">
+          <Link href="/legal/privacy" className="text-white/70 underline-offset-2 hover:underline">
             Privacy Policy
-          </span>
+          </Link>
           .
         </p>
       </div>

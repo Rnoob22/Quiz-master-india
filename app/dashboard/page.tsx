@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import useDeviceFingerprint from "@/lib/hooks/useDeviceFingerprint";
 
 interface UserProfile {
   id: string;
@@ -56,6 +57,8 @@ const MOCK_LIVE_QUIZ: LiveQuiz = {
 const DashboardPage = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  useDeviceFingerprint(status === "authenticated");
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats>(MOCK_STATS);
