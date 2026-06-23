@@ -28,7 +28,6 @@ const STAT_TILES: StatTile[] = [
 const EXAM_PILLS: string[] = [
   "UPSC CSE",
   "KPSC KAS",
-  "Karnataka PSC",
   "SSC CGL",
   "RBI Grade B",
   "IBPS / SBI PO",
@@ -46,7 +45,7 @@ const VALUE_PROPS: ValueProp[] = [
   {
     title: "Syllabus-Aligned Question Bank",
     body:
-      "Every MCQ is mapped to the official UPSC, KPSC and Karnataka PSC syllabus — covering Polity, History, Geography, Economy, Environment, CSAT and Karnataka GK.",
+      "Every MCQ is mapped to the official UPSC and KPSC syllabus — covering Polity, History, Geography, Economy, Environment, CSAT and Karnataka GK.",
     Icon: () => <BookIcon />,
   },
   {
@@ -68,15 +67,6 @@ const VALUE_PROPS: ValueProp[] = [
     Icon: () => <ShieldCheckIcon />,
   },
 ];
-
-const TODAY_QUIZ = {
-  title: "Indian Polity & Constitution — Weekly Mock",
-  schedule: "Today · 8:00 PM IST",
-  duration: "60 minutes",
-  questions: "100 MCQs",
-  scholarship: "₹10,000",
-  tag: "UPSC CSE Prelims · KPSC KAS",
-};
 
 /* ------------------------------------------------------------------ */
 /*  PAGE                                                               */
@@ -178,17 +168,56 @@ const LoginInner = () => {
         </h1>
 
         <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.34em] text-white/55">
-          UPSC <span className="text-[#F59E0B]">·</span> KPSC{" "}
-          <span className="text-[#F59E0B]">·</span> STATE PSC
+          UPSC <span className="text-[#F59E0B]">·</span> KPSC
         </p>
 
         <p className="mt-5 max-w-[20rem] text-[15px] font-semibold leading-snug text-white">
-          A serious quiz platform for India&apos;s civil services aspirants.
+          A serious quiz platform for UPSC &amp; KPSC aspirants.
         </p>
         <p className="mt-2 max-w-[22rem] text-[13px] leading-relaxed text-white/60">
-          Practice exam-pattern MCQs, benchmark on the all-India leaderboard,
-          and earn merit-based cash scholarships — built for KPSC, UPSC and
-          state PSC preparation.
+          Practice exam-pattern MCQs, benchmark on the all-India and Karnataka
+          leaderboards, and earn merit-based cash scholarships — built for
+          UPSC and KPSC preparation.
+        </p>
+      </div>
+
+      {/* =============== PRIMARY CTA (above the fold) =============== */}
+      <div className="mt-6">
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading || status === "loading" || !fpReady}
+          className="
+            group relative w-full overflow-hidden rounded-2xl p-[1.5px]
+            bg-[linear-gradient(135deg,#1E3A8A_0%,#3B82F6_50%,#F59E0B_100%)]
+            shadow-[0_10px_40px_-10px_rgba(59,130,246,0.5)]
+            transition-transform duration-150 active:scale-[0.98]
+            disabled:cursor-not-allowed disabled:opacity-70
+          "
+        >
+          <span
+            className="
+              flex w-full items-center justify-center gap-3 rounded-2xl
+              bg-[#0B0D19] px-5 py-4
+              text-base font-semibold text-white
+              transition-colors duration-150 group-hover:bg-[#11142A]
+            "
+          >
+            {loading ? (
+              <>
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                <span>Connecting securely…</span>
+              </>
+            ) : (
+              <>
+                <GoogleIcon />
+                <span>Sign in with Google to begin</span>
+              </>
+            )}
+          </span>
+        </button>
+        <p className="mt-2.5 text-center text-[11px] text-white/50">
+          Free to register · No credit card · Pay only for paid mocks
         </p>
       </div>
 
@@ -211,56 +240,6 @@ const LoginInner = () => {
               {p}
             </span>
           ))}
-        </div>
-      </section>
-
-      {/* =============== Today's Featured Live Quiz =============== */}
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <SectionLabel>Today&apos;s Featured Quiz</SectionLabel>
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#FCA5A5]">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#DC2626] opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#DC2626]" />
-            </span>
-            Live Today
-          </span>
-        </div>
-
-        <div className="mt-3 rounded-2xl p-[1px] bg-[linear-gradient(135deg,#1E3A8A_0%,#3B82F6_45%,#F59E0B_100%)] shadow-[0_15px_45px_-20px_rgba(59,130,246,0.45)]">
-          <div className="rounded-2xl bg-[#0F1224] p-4">
-            <p className="text-[9px] font-bold uppercase tracking-[0.22em] text-[#FCD34D]">
-              {TODAY_QUIZ.tag}
-            </p>
-            <h3 className="mt-1.5 text-[15px] font-extrabold leading-snug text-white">
-              {TODAY_QUIZ.title}
-            </h3>
-
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <FactCell label="Starts" value={TODAY_QUIZ.schedule} />
-              <FactCell label="Duration" value={TODAY_QUIZ.duration} />
-              <FactCell label="Questions" value={TODAY_QUIZ.questions} />
-            </div>
-
-            <div className="mt-3 flex items-center justify-between rounded-xl border border-[#F59E0B]/25 bg-[#F59E0B]/[0.08] px-3 py-2.5">
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#FCD34D]">
-                  Top Scholarship
-                </p>
-                <p className="mt-0.5 text-lg font-extrabold text-white">
-                  {TODAY_QUIZ.scholarship}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wider text-white/40">
-                  Sign in to
-                </p>
-                <p className="text-[11px] font-semibold text-white">
-                  Register Free
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -459,19 +438,6 @@ const StatCard = ({ value, label }: StatTile) => {
       <p className="text-xl font-extrabold leading-tight text-white">{value}</p>
       <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-white/50">
         {label}
-      </p>
-    </div>
-  );
-};
-
-const FactCell = ({ label, value }: { label: string; value: string }) => {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-left">
-      <p className="text-[8px] font-bold uppercase tracking-widest text-white/40">
-        {label}
-      </p>
-      <p className="mt-0.5 text-[11px] font-semibold leading-tight text-white">
-        {value}
       </p>
     </div>
   );
