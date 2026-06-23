@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Script from "next/script";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import useDeviceFingerprint from "@/lib/hooks/useDeviceFingerprint";
+import useRazorpayCheckout from "@/lib/hooks/useRazorpayCheckout";
 
 interface UserProfile {
   id: string;
@@ -59,6 +61,13 @@ const DashboardPage = () => {
   const router = useRouter();
 
   useDeviceFingerprint(status === "authenticated");
+  const {
+    handleJoinQuiz,
+    loading: joiningQuiz,
+    loadingQuizId,
+    error: joinError,
+    clearError: clearJoinError,
+  } = useRazorpayCheckout();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats>(MOCK_STATS);
@@ -141,6 +150,12 @@ const DashboardPage = () => {
 
   return (
     <div className="relative flex min-h-screen w-full flex-col bg-[#0B0D19] pb-28">
+      {/* Preload Razorpay Checkout SDK so the modal slides in instantly on click */}
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        strategy="afterInteractive"
+      />
+
       {/* Ambient glows */}
       <div aria-hidden className="pointer-events-none absolute -top-24 -right-16 h-64 w-64 rounded-full bg-[#2563EB] opacity-20 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute top-1/3 -left-16 h-56 w-56 rounded-full bg-[#10B981] opacity-15 blur-3xl" />
@@ -262,10 +277,28 @@ const DashboardPage = () => {
         </div>
 
         {liveQuiz ? (
-          <LiveQuizCard quiz={liveQuiz} />
+          <LiveQuizCard
+            quiz={liveQuiz}
+            onJoin={handleJoinQuiz}
+            isJoining={joiningQuiz && loadingQuizId === liveQuiz.id}
+          />
         ) : (
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/50">
             No live quizzes right now. Check back soon!
+          </div>
+        )}
+
+        {joinError && (
+          <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-[#DC2626]/40 bg-[#DC2626]/10 px-3 py-2 text-xs text-[#FCA5A5]">
+            <span className="leading-relaxed">{joinError}</span>
+            <button
+              type="button"
+              onClick={clearJoinError}
+              className="text-white/60 hover:text-white"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
           </div>
         )}
       </section>
@@ -313,7 +346,13 @@ const StatCard = ({ label, value, accent, icon }: StatCardProps) => {
   );
 };
 
-const LiveQuizCard = ({ quiz }: { quiz: LiveQuiz }) => {
+interface LiveQuizCardProps {
+  quiz: LiveQuiz;
+  onJoin: (quizId: string) => Promise<void> | void;
+  isJoining: boolean;
+}
+
+const LiveQuizCard = ({ quiz, onJoin, isJoining }: LiveQuizCardProps) => {
   const start = new Date(quiz.startTime);
   const startText = start.toLocaleString("en-IN", {
     weekday: "short",
@@ -322,6 +361,13 @@ const LiveQuizCard = ({ quiz }: { quiz: LiveQuiz }) => {
     day: "numeric",
     month: "short",
   });
+
+  const isFree = quiz.entryFee <= 0;
+
+  const handleClick = () => {
+    if (isJoining) return;
+    onJoin(quiz.id);
+  };
 
   return (
     <div className="relative rounded-3xl p-[1.5px] bg-[linear-gradient(135deg,#2563EB_0%,#DC2626_33%,#F59E0B_66%,#10B981_100%)] shadow-[0_20px_60px_-20px_rgba(37,99,235,0.5)]">
@@ -363,15 +409,26 @@ const LiveQuizCard = ({ quiz }: { quiz: LiveQuiz }) => {
           </div>
         </div>
 
-        <Link
-          href={`/quiz/${quiz.id}`}
-          className="group mt-5 block w-full overflow-hidden rounded-2xl p-[1.5px] bg-[linear-gradient(135deg,#2563EB_0%,#DC2626_33%,#F59E0B_66%,#10B981_100%)] shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] transition-transform duration-150 active:scale-[0.98]"
+        <button
+          type="button"
+          onClick={handleClick}
+          disabled={isJoining}
+          className="group mt-5 block w-full overflow-hidden rounded-2xl p-[1.5px] bg-[linear-gradient(135deg,#2563EB_0%,#DC2626_33%,#F59E0B_66%,#10B981_100%)] shadow-[0_10px_40px_-10px_rgba(220,38,38,0.5)] transition-transform duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
         >
           <span className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0B0D19] px-5 py-3.5 text-sm font-extrabold uppercase tracking-[0.2em] text-white transition-colors duration-150 group-hover:bg-[#11142A]">
-            <span>Join Arena</span>
-            <ArrowRightIcon />
+            {isJoining ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                <span>{isFree ? "Joining…" : "Opening Payment…"}</span>
+              </>
+            ) : (
+              <>
+                <span>{isFree ? "Join Arena" : `Pay ₹${quiz.entryFee} & Join`}</span>
+                <ArrowRightIcon />
+              </>
+            )}
           </span>
-        </Link>
+        </button>
       </div>
     </div>
   );

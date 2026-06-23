@@ -40,44 +40,21 @@ interface QuizPayload {
 }
 
 /* ------------------------------------------------------------------ */
-/*  FALLBACK QUESTIONS (failsafe to prevent render crash)              */
+/*  GATE DEFAULTS                                                      */
 /* ------------------------------------------------------------------ */
+//
+// IMPORTANT: There are NO fallback / preview questions on this page. Until
+// the server-gated /api/quiz/[id] endpoint returns a 200 (which it only
+// does after verifying an unconsumed SUCCESS payment for paid quizzes),
+// this page must NEVER render playable content. The previous fallback
+// constants were the root cause of a payment bypass — do not reintroduce
+// them.
 
-const FALLBACK_META: QuizMeta = {
-  id: "preview",
-  title: "QuizMasters Practice Round",
-  durationSeconds: 60,
+const EMPTY_META: QuizMeta = {
+  id: "",
+  title: "",
+  durationSeconds: 0,
 };
-
-const FALLBACK_QUESTIONS: QuizQuestion[] = [
-  {
-    id: "fb-1",
-    text: "Which Indian city is known as the 'Silicon Valley of India'?",
-    optionA: "Mumbai",
-    optionB: "Bengaluru",
-    optionC: "Hyderabad",
-    optionD: "Pune",
-    points: 1,
-  },
-  {
-    id: "fb-2",
-    text: "Who wrote the Indian national anthem 'Jana Gana Mana'?",
-    optionA: "Bankim Chandra Chatterjee",
-    optionB: "Sarojini Naidu",
-    optionC: "Rabindranath Tagore",
-    optionD: "Subramania Bharati",
-    points: 1,
-  },
-  {
-    id: "fb-3",
-    text: "Which Indian state is the largest producer of tea?",
-    optionA: "Kerala",
-    optionB: "West Bengal",
-    optionC: "Assam",
-    optionD: "Tamil Nadu",
-    points: 1,
-  },
-];
 
 /* ------------------------------------------------------------------ */
 /*  COMPONENT                                                          */
@@ -91,14 +68,18 @@ const QuizArenaPage = () => {
 
   /* ---------------- State ---------------- */
   const [loading, setLoading] = useState<boolean>(true);
-  const [meta, setMeta] = useState<QuizMeta>(FALLBACK_META);
-  const [questions, setQuestions] = useState<QuizQuestion[]>(FALLBACK_QUESTIONS);
+  const [meta, setMeta] = useState<QuizMeta>(EMPTY_META);
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [denied, setDenied] = useState<{
+    message: string;
+    code: string;
+  } | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<OptionKey | null>(null);
   const [answers, setAnswers] = useState<Record<string, OptionKey>>({});
   const [score, setScore] = useState<number>(0);
   const [incorrectCount, setIncorrectCount] = useState<number>(0);
-  const [remaining, setRemaining] = useState<number>(FALLBACK_META.durationSeconds);
+  const [remaining, setRemaining] = useState<number>(0);
   const [cheated, setCheated] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -115,52 +96,129 @@ const QuizArenaPage = () => {
     if (authStatus === "unauthenticated") router.replace("/login");
   }, [authStatus, router]);
 
-  /* ---------------- Load Quiz Payload ---------------- */
+  /* ---------------- Load Quiz Payload (STRICT DENY-BY-DEFAULT) ---------------- */
   useEffect(() => {
     if (!quizId) return;
     let active = true;
 
+    const denyAndRedirect = (
+      message: string,
+      code: string,
+      target: "result" | "dashboard"
+    ) => {
+      if (!active) return;
+      setDenied({ message, code });
+      setLoading(false);
+      if (typeof window !== "undefined") {
+        // Use a microtask-deferred alert so the deny screen flashes first.
+        setTimeout(() => {
+          try {
+            window.alert(message);
+          } catch {
+            /* ignore */
+          }
+          if (target === "result") {
+            router.replace(`/quiz/${encodeURIComponent(quizId)}/result`);
+          } else {
+            router.replace("/dashboard");
+          }
+        }, 50);
+      }
+    };
+
     const load = async () => {
       setLoading(true);
       try {
-        // ---- Entry gate: must have unconsumed SUCCESS payment AND no prior submission ----
-        const gateRes = await fetch(`/api/quiz/${encodeURIComponent(quizId)}/entry-check`, {
-          cache: "no-store",
-        });
-        if (gateRes.ok) {
-          const gate: {
-            canPlay: boolean;
-            reason: string;
-            submissionId: string | null;
-            message: string;
-          } = await gateRes.json();
-          if (!gate.canPlay) {
-            if (typeof window !== "undefined") {
-              window.alert(gate.message);
-            }
-            if (gate.reason === "already_submitted") {
-              router.replace(`/quiz/${encodeURIComponent(quizId)}/result`);
-            } else {
-              router.replace("/dashboard");
-            }
-            return;
+        // ---- 1) Pre-flight entry gate ----
+        // Default to DENY. We only proceed if the gate explicitly returns
+        // 200 + canPlay:true. Any 4xx/5xx, network error, or canPlay:false
+        // blocks the user and redirects them out.
+        let gateOk = false;
+        let gateCode = "unknown";
+        let gateMsg = "Entry verification failed.";
+        let submissionId: string | null = null;
+        try {
+          const gateRes = await fetch(
+            `/api/quiz/${encodeURIComponent(quizId)}/entry-check`,
+            { cache: "no-store" }
+          );
+          if (gateRes.ok) {
+            const gate: {
+              canPlay: boolean;
+              reason: string;
+              submissionId: string | null;
+              message: string;
+            } = await gateRes.json();
+            gateOk = !!gate.canPlay;
+            gateCode = gate.reason || gateCode;
+            gateMsg = gate.message || gateMsg;
+            submissionId = gate.submissionId ?? null;
+          } else if (gateRes.status === 401) {
+            gateCode = "unauthorized";
+            gateMsg = "Please sign in again to continue.";
+          } else {
+            const body: { error?: string; reason?: string } = await gateRes
+              .json()
+              .catch(() => ({}));
+            gateCode = body?.reason ?? `http_${gateRes.status}`;
+            gateMsg = body?.error ?? `Entry check failed (HTTP ${gateRes.status}).`;
           }
+        } catch (gateErr) {
+          console.error("[QuizArena] gate fetch failed:", gateErr);
+          gateCode = "gate_error";
+          gateMsg = "Could not verify your entry. Please try again.";
         }
 
+        if (!gateOk) {
+          denyAndRedirect(
+            gateMsg,
+            gateCode,
+            gateCode === "already_submitted" ? "result" : "dashboard"
+          );
+          // Suppress unused-var lint warning for submissionId
+          void submissionId;
+          return;
+        }
+
+        // ---- 2) Fetch the gated quiz payload ----
+        // The server-side /api/quiz/[id] endpoint re-validates payment +
+        // submission state. If it returns anything other than 200 we MUST
+        // block — the previous version fell back to hard-coded preview
+        // questions here, which was the payment-bypass root cause.
         const res = await fetch(`/api/quiz/${encodeURIComponent(quizId)}`, {
           cache: "no-store",
         });
         if (!active) return;
-        if (res.ok) {
-          const data: QuizPayload = await res.json();
-          if (data?.questions?.length && data?.quiz) {
-            setMeta(data.quiz);
-            setQuestions(data.questions);
-            setRemaining(data.quiz.durationSeconds ?? FALLBACK_META.durationSeconds);
-          }
+        if (!res.ok) {
+          const body: { error?: string; code?: string } = await res
+            .json()
+            .catch(() => ({}));
+          denyAndRedirect(
+            body?.error ?? `Failed to load quiz (HTTP ${res.status}).`,
+            body?.code ?? `http_${res.status}`,
+            body?.code === "already_submitted" ? "result" : "dashboard"
+          );
+          return;
         }
+        const data: QuizPayload = await res.json();
+        if (!data?.questions?.length || !data?.quiz) {
+          denyAndRedirect(
+            "This quiz has no questions yet. Please contact support.",
+            "no_questions",
+            "dashboard"
+          );
+          return;
+        }
+        setMeta(data.quiz);
+        setQuestions(data.questions);
+        setRemaining(data.quiz.durationSeconds ?? 0);
       } catch (err) {
         console.error("[QuizArena] load failed:", err);
+        denyAndRedirect(
+          "Unexpected error. Please try again.",
+          "load_error",
+          "dashboard"
+        );
       } finally {
         if (active) {
           setLoading(false);
@@ -173,7 +231,7 @@ const QuizArenaPage = () => {
     return () => {
       active = false;
     };
-  }, [quizId]);
+  }, [quizId, router]);
 
   /* ---------------- Submission Handler ---------------- */
   const submitQuiz = useCallback(
@@ -237,7 +295,7 @@ const QuizArenaPage = () => {
   );
 
   useEffect(() => {
-    if (loading || typeof window === "undefined") return;
+    if (loading || denied || questions.length === 0 || typeof window === "undefined") return;
 
     const requestFs = async () => {
       try {
@@ -324,14 +382,14 @@ const QuizArenaPage = () => {
 
   /* ---------------- Countdown Timer ---------------- */
   useEffect(() => {
-    if (loading || cheated || submittedRef.current) return;
+    if (loading || denied || questions.length === 0 || cheated || submittedRef.current) return;
     if (remaining <= 0) {
       submitQuiz("timeout");
       return;
     }
     const t = window.setTimeout(() => setRemaining((s) => s - 1), 1000);
     return () => window.clearTimeout(t);
-  }, [remaining, loading, cheated, submitQuiz]);
+  }, [remaining, loading, denied, questions.length, cheated, submitQuiz]);
 
   /* ---------------- Derived ---------------- */
   const total = questions.length;
@@ -382,6 +440,27 @@ const QuizArenaPage = () => {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-[#0B0D19]">
         <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+      </div>
+    );
+  }
+
+  // STRICT DENY screen — rendered whenever the entry gate or the gated
+  // questions endpoint rejects this user. The redirect to /dashboard fires
+  // shortly after this paint via the load effect above.
+  if (denied) {
+    return (
+      <div className="relative flex min-h-screen w-full flex-col items-center justify-center bg-[#0B0D19] px-6 text-center">
+        <div className="rounded-3xl border border-[#DC2626]/40 bg-[#DC2626]/10 p-8 max-w-sm">
+          <p className="text-5xl">🔒</p>
+          <h1 className="mt-4 text-xl font-extrabold text-white">
+            Entry Blocked
+          </h1>
+          <p className="mt-2 text-sm text-white/70">{denied.message}</p>
+          <p className="mt-3 text-[10px] uppercase tracking-widest text-white/40">
+            Reason: {denied.code}
+          </p>
+          <p className="mt-4 text-xs text-white/50">Redirecting…</p>
+        </div>
       </div>
     );
   }
