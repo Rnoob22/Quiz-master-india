@@ -1,14 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  getOrCreateDeviceFingerprint,
+  persistDeviceFingerprintCookie,
+} from "@/lib/deviceFingerprint";
 
-const LoginPage = () => {
+const LoginInner = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const params = useSearchParams();
   const [loading, setLoading] = useState<boolean>(false);
+  const [fpReady, setFpReady] = useState<boolean>(false);
+
+  const errorCode = params?.get("error") ?? "";
+
+  // Compute device fingerprint and persist it into a cookie *before* the
+  // user clicks "Sign in with Google". This cookie is then read by the
+  // NextAuth signIn callback to enforce the "One Device, One Account" lock.
+  useEffect(() => {
+    try {
+      const fp = getOrCreateDeviceFingerprint();
+      if (fp) {
+        persistDeviceFingerprintCookie(fp);
+      }
+    } catch (err) {
+      console.warn("[Login] device fingerprint setup failed:", err);
+    } finally {
+      setFpReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
@@ -19,6 +43,14 @@ const LoginPage = () => {
   const handleGoogleSignIn = async () => {
     if (loading) return;
     setLoading(true);
+    // Re-persist the cookie right before redirect, in case it was cleared
+    // by an extension or expired between mount and click.
+    try {
+      const fp = getOrCreateDeviceFingerprint();
+      if (fp) persistDeviceFingerprintCookie(fp);
+    } catch {
+      /* ignore */
+    }
     try {
       await signIn("google", { callbackUrl: "/dashboard" });
     } catch (err) {
@@ -26,6 +58,10 @@ const LoginPage = () => {
       setLoading(false);
     }
   };
+
+  const isMultiDeviceError = errorCode === "MULTIPLE_DEVICE_LOGIN";
+  const isGenericError =
+    !!errorCode && !isMultiDeviceError && errorCode !== "AccessDenied";
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-between overflow-hidden px-6 py-12">
@@ -79,6 +115,64 @@ const LoginPage = () => {
           Join India&apos;s premier real-money quiz arena. Test your knowledge,
           climb the leaderboard, and win exciting cash rewards.
         </p>
+
+        {/* Security error banners */}
+        {isMultiDeviceError && (
+          <div
+            role="alert"
+            className="mt-6 w-full max-w-sm rounded-2xl border border-[#DC2626]/40 bg-[#DC2626]/10 px-4 py-3 text-left"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#DC2626]/20 text-[#FCA5A5]">
+                <ShieldIcon />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#FCA5A5]">
+                  Sign-in blocked: New device detected
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/70">
+                  For your security, this account is locked to its original
+                  device. Please sign in from the device you first registered
+                  with, or contact{" "}
+                  <Link
+                    href="/support"
+                    className="text-white underline underline-offset-2"
+                  >
+                    support
+                  </Link>{" "}
+                  to reset your device lock.
+                </p>
+                <p className="mt-2 text-[10px] uppercase tracking-widest text-white/40">
+                  Error&nbsp;code:&nbsp;MULTIPLE_DEVICE_LOGIN
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isGenericError && (
+          <div
+            role="alert"
+            className="mt-6 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left"
+          >
+            <p className="text-sm font-semibold text-white/90">
+              We couldn&apos;t complete your sign-in.
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-white/60">
+              Please try again. If the problem persists, contact{" "}
+              <Link
+                href="/support"
+                className="text-white underline underline-offset-2"
+              >
+                support
+              </Link>
+              .
+            </p>
+            <p className="mt-2 text-[10px] uppercase tracking-widest text-white/40">
+              Error&nbsp;code:&nbsp;{errorCode}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* CTA block */}
@@ -86,7 +180,7 @@ const LoginPage = () => {
         <button
           type="button"
           onClick={handleGoogleSignIn}
-          disabled={loading || status === "loading"}
+          disabled={loading || status === "loading" || !fpReady}
           className="
             group relative w-full overflow-hidden rounded-2xl p-[1.5px]
             bg-[linear-gradient(135deg,#2563EB_0%,#DC2626_33%,#F59E0B_66%,#10B981_100%)]
@@ -133,6 +227,14 @@ const LoginPage = () => {
   );
 };
 
+const LoginPage = () => {
+  return (
+    <Suspense fallback={null}>
+      <LoginInner />
+    </Suspense>
+  );
+};
+
 const GoogleIcon = () => {
   return (
     <svg
@@ -157,6 +259,26 @@ const GoogleIcon = () => {
         fill="#1976D2"
         d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
       />
+    </svg>
+  );
+};
+
+const ShieldIcon = () => {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M12 8v4" />
+      <path d="M12 16h.01" />
     </svg>
   );
 };

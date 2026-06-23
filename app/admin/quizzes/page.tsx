@@ -171,6 +171,12 @@ const AdminQuizzesPage = () => {
                 Delete
               </ActionBtn>
               <Link
+                href={`/admin/quizzes/${q.id}/edit`}
+                className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/70 hover:bg-white/10"
+              >
+                Edit
+              </Link>
+              <Link
                 href={`/admin/quizzes/${q.id}/questions`}
                 className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/70 hover:bg-white/10"
               >
