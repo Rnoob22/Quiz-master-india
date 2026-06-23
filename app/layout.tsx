@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ReactNode } from "react";
-import Providers from "./providers";
+import { Providers } from "./providers";
 import "./globals.css";
 
 const inter = Inter({
