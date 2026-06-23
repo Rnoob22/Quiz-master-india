@@ -1,0 +1,108 @@
+// QuizMasters India - Prisma Schema
+// Datasource: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuizStatus {
+  DRAFT
+  LIVE
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id                String        @id @default(cuid())
+  email             String        @unique
+  name              String
+  image             String?
+  dob               DateTime?
+  state             String?
+  city              String?
+  preferredLanguage String        @default("English")
+  deviceFingerprint String?
+  createdAt         DateTime      @default(now())
+
+  payments          Payment[]
+  submissions       Submission[]
+}
+
+model Quiz {
+  id              String        @id @default(cuid())
+  title           String
+  startTime       DateTime
+  durationSeconds Int
+  entryFee        Float
+  totalPrizePool  Float
+  maxParticipants Int
+  collectGst      Boolean       @default(false)
+  status          QuizStatus    @default(DRAFT)
+
+  questions       Question[]
+  payments        Payment[]
+  submissions     Submission[]
+}
+
+model Question {
+  id            String  @id @default(cuid())
+  quizId        String
+  text          String
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  correctAnswer String
+  points        Int     @default(1)
+  explanation   String?
+
+  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  userId            String
+  quizId            String
+  razorpayOrderId   String        @unique
+  razorpayPaymentId String?
+  status            PaymentStatus @default(PENDING)
+  baseAmount        Float
+  taxAmount         Float         @default(0.0)
+  totalPaid         Float
+  createdAt         DateTime      @default(now())
+
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz              Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([quizId])
+}
+
+model Submission {
+  id             String   @id @default(cuid())
+  userId         String
+  quizId         String
+  score          Int      @default(0)
+  timeTakenMs    Int
+  incorrectCount Int      @default(0)
+  submittedAt    DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([score(sort: Desc), timeTakenMs(sort: Asc), incorrectCount(sort: Asc), submittedAt(sort: Asc)])
+  @@index([userId])
+  @@index([quizId])
+}
