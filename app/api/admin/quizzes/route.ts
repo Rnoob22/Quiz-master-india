@@ -31,6 +31,9 @@ interface CreateQuizPayload {
   collectGst?: boolean;
   status?: QuizStatus;
   questions?: QuestionInput[];
+  competitionStartTime?: string | null;
+  competitionEndTime?: string | null;
+  minParticipantsThreshold?: number;
 }
 
 interface QuizSummary {
@@ -187,6 +190,9 @@ export async function POST(
   const totalPrizePool = sanitizeFloat(payload.totalPrizePool, 0);
   const maxParticipants = sanitizeInt(payload.maxParticipants, 0);
   const collectGst = payload.collectGst === true;
+  const competitionStartTime = payload.competitionStartTime ? new Date(payload.competitionStartTime) : null;
+  const competitionEndTime = payload.competitionEndTime ? new Date(payload.competitionEndTime) : null;
+  const minParticipantsThreshold = Math.max(1, Number(payload.minParticipantsThreshold ?? 1000) || 1000);
   const status: QuizStatus =
     payload.status === "LIVE" || payload.status === "COMPLETED"
       ? payload.status

@@ -182,6 +182,9 @@ const AdminQuizCreatePage = () => {
           maxParticipants: Number(form.maxParticipants),
           collectGst: form.collectGst,
           status: form.status,
+          competitionStartTime: form.competitionStartTime ? new Date(form.competitionStartTime).toISOString() : null,
+          competitionEndTime: form.competitionEndTime ? new Date(form.competitionEndTime).toISOString() : null,
+          minParticipantsThreshold: Number(form.minParticipantsThreshold) || 1000,
           questions: questions.map((q) => ({
             text: q.text.trim(),
             optionA: q.optionA.trim(),

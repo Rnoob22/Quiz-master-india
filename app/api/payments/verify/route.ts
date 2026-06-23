@@ -188,8 +188,20 @@ export async function POST(
 
     const confirmed = await prisma.payment.findUnique({
       where: { id: paymentId },
-      select: { quizId: true },
+      select: { quizId: true, totalPaid: true, user: { select: { id: true, email: true, name: true } }, quiz: { select: { title: true } } },
     });
+
+    // Fire-and-forget receipt notification
+    if (confirmed?.user?.email) {
+      const { notifyByEmail } = await import("@/lib/notifications");
+      notifyByEmail(
+        confirmed.user.id,
+        confirmed.user.email,
+        "payment_receipt",
+        `Payment receipt – ${confirmed.quiz.title}`,
+        `Hi ${confirmed.user.name},\n\nWe've received your entry payment of ₹${confirmed.totalPaid.toLocaleString("en-IN")} for "${confirmed.quiz.title}".\n\nYour spot in the arena is locked in. Good luck!\n\n— QuizMasters India`
+      ).catch(() => undefined);
+    }
 
     return NextResponse.json(
       {

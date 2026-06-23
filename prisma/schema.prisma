@@ -1,6 +1,4 @@
 // QuizMasters India - Prisma Schema
-// Datasource: PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -22,6 +20,27 @@ enum PaymentStatus {
   FAILED
 }
 
+enum KycStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
 model User {
   id                String        @id @default(cuid())
   email             String        @unique
@@ -30,28 +49,58 @@ model User {
   dob               DateTime?
   state             String?
   city              String?
+  mobile            String?
+  gender            String?
   preferredLanguage String        @default("English")
   deviceFingerprint String?
+
+  // KYC + payout
+  panNumber         String?
+  panStatus         KycStatus     @default(PENDING)
+  bankAccount       String?
+  bankIfsc          String?
+  bankHolderName    String?
+  upiHandle         String?
+  kycStatus         KycStatus     @default(PENDING)
+  kycSubmittedAt    DateTime?
+  kycReviewedAt     DateTime?
+  kycRejectionReason String?
+
   createdAt         DateTime      @default(now())
 
   payments          Payment[]
   submissions       Submission[]
+  tickets           SupportTicket[]
+  ticketMessages    TicketMessage[]
+  notifications     NotificationLog[]
+  prizeClaims       PrizeClaim[]
 }
 
 model Quiz {
-  id              String        @id @default(cuid())
-  title           String
-  startTime       DateTime
-  durationSeconds Int
-  entryFee        Float
-  totalPrizePool  Float
-  maxParticipants Int
-  collectGst      Boolean       @default(false)
-  status          QuizStatus    @default(DRAFT)
+  id                   String        @id @default(cuid())
+  title                String
+  startTime            DateTime
+  durationSeconds      Int
+  entryFee             Float
+  totalPrizePool       Float
+  maxParticipants      Int
+  collectGst           Boolean       @default(false)
+  status               QuizStatus    @default(DRAFT)
 
-  questions       Question[]
-  payments        Payment[]
-  submissions     Submission[]
+  // Competition window (spans multiple days, separate from per-attempt timer)
+  competitionStartTime DateTime?
+  competitionEndTime   DateTime?
+
+  // Winner resolution lifecycle
+  winnersResolved      Boolean       @default(false)
+  winnersResolvedAt    DateTime?
+  manualOverride       Boolean       @default(false)
+  minParticipantsThreshold Int       @default(1000)
+
+  questions            Question[]
+  payments             Payment[]
+  submissions          Submission[]
+  prizeClaims          PrizeClaim[]
 }
 
 model Question {
@@ -65,9 +114,7 @@ model Question {
   correctAnswer String
   points        Int     @default(1)
   explanation   String?
-
   quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-
   @@index([quizId])
 }
 
@@ -82,10 +129,8 @@ model Payment {
   taxAmount         Float         @default(0.0)
   totalPaid         Float
   createdAt         DateTime      @default(now())
-
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   quiz              Quiz          @relation(fields: [quizId], references: [id], onDelete: Cascade)
-
   @@index([userId])
   @@index([quizId])
 }
@@ -98,11 +143,75 @@ model Submission {
   timeTakenMs    Int
   incorrectCount Int      @default(0)
   submittedAt    DateTime @default(now())
-
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   quiz           Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
-
   @@index([score(sort: Desc), timeTakenMs(sort: Asc), incorrectCount(sort: Asc), submittedAt(sort: Asc)])
   @@index([userId])
   @@index([quizId])
+}
+
+model PrizeClaim {
+  id             String       @id @default(cuid())
+  userId         String
+  quizId         String
+  rank           Int
+  grossAmount    Float
+  tdsAmount      Float        @default(0)
+  netAmount      Float
+  status         ClaimStatus  @default(PENDING)
+  payoutMethod   String?
+  payoutRef      String?
+  approvedAt     DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz           Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  @@unique([userId, quizId])
+  @@index([userId])
+  @@index([quizId])
+  @@index([status])
+}
+
+model SupportTicket {
+  id        String          @id @default(cuid())
+  userId    String
+  subject   String
+  category  String          @default("general")
+  status    TicketStatus    @default(OPEN)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  TicketMessage[]
+  @@index([userId])
+  @@index([status])
+}
+
+model TicketMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  authorId  String?
+  authorEmail String
+  isAdmin   Boolean       @default(false)
+  body      String
+  createdAt DateTime      @default(now())
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author    User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  @@index([ticketId])
+}
+
+model NotificationLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  channel   String   // email | sms | push
+  template  String
+  recipient String
+  subject   String?
+  body      String   @db.Text
+  status    String   @default("queued") // queued | sent | failed
+  error     String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([userId])
+  @@index([channel, status])
+  @@index([createdAt])
 }
