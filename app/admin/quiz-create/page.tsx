@@ -104,6 +104,34 @@ const AdminQuizCreatePage = () => {
   const removeQuestion = (idx: number) =>
     setQuestions((prev) => prev.filter((_, i) => i !== idx));
 
+  const importQuestions = (items: ParsedQuestion[]) => {
+    if (items.length === 0) return;
+    setQuestions((prev) => {
+      // If the form has only the single empty placeholder row, replace it.
+      const onlyEmpty =
+        prev.length === 1 &&
+        !prev[0].text.trim() &&
+        !prev[0].optionA.trim() &&
+        !prev[0].optionB.trim() &&
+        !prev[0].optionC.trim() &&
+        !prev[0].optionD.trim();
+      const base = onlyEmpty ? [] : prev;
+      return [
+        ...base,
+        ...items.map<QuestionDraft>((q) => ({
+          text: q.text,
+          optionA: q.optionA,
+          optionB: q.optionB,
+          optionC: q.optionC,
+          optionD: q.optionD,
+          correctAnswer: q.correctAnswer,
+          points: q.points,
+          explanation: q.explanation,
+        })),
+      ];
+    });
+  };
+
   /* ---------------- Submit ---------------- */
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -335,6 +363,9 @@ const AdminQuizCreatePage = () => {
                 + Add
               </button>
             </div>
+
+            <QuestionBulkImporter onImport={importQuestions} />
+
 
             {questions.map((q, idx) => (
               <div
