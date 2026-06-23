@@ -123,6 +123,30 @@ const QuizArenaPage = () => {
     const load = async () => {
       setLoading(true);
       try {
+        // ---- Entry gate: must have unconsumed SUCCESS payment AND no prior submission ----
+        const gateRes = await fetch(`/api/quiz/${encodeURIComponent(quizId)}/entry-check`, {
+          cache: "no-store",
+        });
+        if (gateRes.ok) {
+          const gate: {
+            canPlay: boolean;
+            reason: string;
+            submissionId: string | null;
+            message: string;
+          } = await gateRes.json();
+          if (!gate.canPlay) {
+            if (typeof window !== "undefined") {
+              window.alert(gate.message);
+            }
+            if (gate.reason === "already_submitted") {
+              router.replace(`/quiz/${encodeURIComponent(quizId)}/result`);
+            } else {
+              router.replace("/dashboard");
+            }
+            return;
+          }
+        }
+
         const res = await fetch(`/api/quiz/${encodeURIComponent(quizId)}`, {
           cache: "no-store",
         });

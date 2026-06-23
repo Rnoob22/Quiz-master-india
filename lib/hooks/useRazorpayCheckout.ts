@@ -128,6 +128,40 @@ export const useRazorpayCheckout = (): UseRazorpayCheckoutReturn => {
       setError(null);
 
       try {
+        // ---- Pre-flight gate: is there an active unconsumed entry? ----
+        const gateRes = await fetch(`/api/quiz/${encodeURIComponent(quizId)}/entry-check`, {
+          cache: "no-store",
+        });
+        if (gateRes.ok) {
+          const gate: {
+            canPlay: boolean;
+            reason: string;
+            hasUnconsumedPayment: boolean;
+            hasSubmission: boolean;
+            message: string;
+          } = await gateRes.json();
+
+          // If user already submitted this quiz, force them to pay again to retake.
+          // (Continue with regular Razorpay flow below.)
+          if (gate.hasSubmission && !gate.hasUnconsumedPayment) {
+            const proceed =
+              typeof window === "undefined"
+                ? true
+                : window.confirm(
+                    "You've already submitted this quiz. Pay the entry fee again to retake it?"
+                  );
+            if (!proceed) {
+              reset();
+              return;
+            }
+          } else if (gate.canPlay && gate.hasUnconsumedPayment) {
+            // Already paid and not yet submitted -> skip Razorpay, jump straight in.
+            reset();
+            router.push(`/quiz/${encodeURIComponent(quizId)}`);
+            return;
+          }
+        }
+
         // 1) Ensure SDK is on the page
         const ok = await loadRazorpayScript();
         if (!ok || !window.Razorpay) {
