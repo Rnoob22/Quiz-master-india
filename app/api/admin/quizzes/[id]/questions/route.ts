@@ -6,9 +6,11 @@ import prisma from "@/lib/db";
 type OptionKey = "A" | "B" | "C" | "D";
 const ALLOWED: OptionKey[] = ["A", "B", "C", "D"];
 
-interface RouteContext {
-  params: Promise<{ id: string }> | { id: string };
-}
+type RouteContext = {
+  params: Promise<{
+    id: string;
+  }>;
+};
 
 interface QuestionInput {
   text: string;
@@ -30,38 +32,70 @@ const adminEmails = (): string[] =>
 const isAdmin = (email?: string | null): boolean =>
   !!email && adminEmails().includes(email.toLowerCase());
 
-async function requireAdmin(): Promise<{ ok: true } | { ok: false; res: NextResponse }> {
+async function requireAdmin(): Promise<
+  { ok: true } | { ok: false; res: NextResponse }
+> {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.email) {
-    return { ok: false, res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      ok: false,
+      res: NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      ),
+    };
   }
+
   if (!isAdmin(session.user.email)) {
-    return { ok: false, res: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    return {
+      ok: false,
+      res: NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      ),
+    };
   }
+
   return { ok: true };
 }
 
 /* -------------------- GET: list questions of a quiz ------------------- */
+
 export async function GET(
   _req: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ): Promise<NextResponse> {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.res;
 
-  const params = await Promise.resolve(context.params);
-  const id = params?.id?.trim();
-  if (!id) return NextResponse.json({ error: "quiz id required" }, { status: 400 });
+  const { id } = await params;
+
+  if (!id?.trim()) {
+    return NextResponse.json(
+      { error: "quiz id required" },
+      { status: 400 }
+    );
+  }
 
   try {
     const quiz = await prisma.quiz.findUnique({
-      where: { id },
-      select: { id: true, title: true },
+      where: { id: id.trim() },
+      select: {
+        id: true,
+        title: true,
+      },
     });
-    if (!quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+
+    if (!quiz) {
+      return NextResponse.json(
+        { error: "Quiz not found" },
+        { status: 404 }
+      );
+    }
 
     const questions = await prisma.question.findMany({
-      where: { quizId: id },
+      where: { quizId: id.trim() },
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -76,48 +110,81 @@ export async function GET(
       },
     });
 
-    return NextResponse.json({ quiz, questions });
+    return NextResponse.json({
+      quiz,
+      questions,
+    });
   } catch (err) {
-    console.error("[GET /api/admin/quizzes/[id]/questions] Failed:", err);
-    return NextResponse.json({ error: "Failed to load questions." }, { status: 500 });
+    console.error(
+      "[GET /api/admin/quizzes/[id]/questions] Failed:",
+      err
+    );
+
+    return NextResponse.json(
+      { error: "Failed to load questions." },
+      { status: 500 }
+    );
   }
 }
 
 /* -------------------- POST: append questions (bulk) ------------------- */
+
 export async function POST(
   req: NextRequest,
-  context: RouteContext
+  { params }: RouteContext
 ): Promise<NextResponse> {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.res;
 
-  const params = await Promise.resolve(context.params);
-  const id = params?.id?.trim();
-  if (!id) return NextResponse.json({ error: "quiz id required" }, { status: 400 });
+  const { id } = await params;
 
-  let body: { questions?: QuestionInput[]; mode?: "append" | "replace" };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const questions = Array.isArray(body.questions) ? body.questions : [];
-  if (questions.length === 0) {
+  if (!id?.trim()) {
     return NextResponse.json(
-      { error: "questions array is required and non-empty." },
+      { error: "quiz id required" },
       { status: 400 }
     );
   }
+
+  let body: {
+    questions?: QuestionInput[];
+    mode?: "append" | "replace";
+  };
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON" },
+      { status: 400 }
+    );
+  }
+
+  const questions = Array.isArray(body.questions)
+    ? body.questions
+    : [];
+
+  if (questions.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "questions array is required and non-empty.",
+      },
+      { status: 400 }
+    );
+  }
+
   if (questions.length > 1000) {
     return NextResponse.json(
-      { error: "Maximum 1000 questions per upload." },
+      {
+        error: "Maximum 1000 questions per upload.",
+      },
       { status: 400 }
     );
   }
 
   for (let i = 0; i < questions.length; i += 1) {
     const q = questions[i];
+
     if (
       !q?.text?.trim() ||
       !q?.optionA?.trim() ||
@@ -126,14 +193,26 @@ export async function POST(
       !q?.optionD?.trim()
     ) {
       return NextResponse.json(
-        { error: `Question ${i + 1} is missing text or options.` },
+        {
+          error: `Question ${
+            i + 1
+          } is missing text or options.`,
+        },
         { status: 400 }
       );
     }
-    const ans = String(q.correctAnswer ?? "").toUpperCase() as OptionKey;
+
+    const ans = String(
+      q.correctAnswer ?? ""
+    ).toUpperCase() as OptionKey;
+
     if (!ALLOWED.includes(ans)) {
       return NextResponse.json(
-        { error: `Question ${i + 1} has invalid correctAnswer (expected A/B/C/D).` },
+        {
+          error: `Question ${
+            i + 1
+          } has invalid correctAnswer (expected A/B/C/D).`,
+        },
         { status: 400 }
       );
     }
@@ -141,35 +220,71 @@ export async function POST(
 
   try {
     const quiz = await prisma.quiz.findUnique({
-      where: { id },
+      where: { id: id.trim() },
       select: { id: true },
     });
-    if (!quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
 
-    const result = await prisma.$transaction(async (tx) => {
-      if (body.mode === "replace") {
-        await tx.question.deleteMany({ where: { quizId: id } });
+    if (!quiz) {
+      return NextResponse.json(
+        { error: "Quiz not found" },
+        { status: 404 }
+      );
+    }
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        if (body.mode === "replace") {
+          await tx.question.deleteMany({
+            where: { quizId: id.trim() },
+          });
+        }
+
+        const created = await tx.question.createMany({
+          data: questions.map((q) => ({
+            quizId: id.trim(),
+            text: q.text.trim(),
+            optionA: q.optionA.trim(),
+            optionB: q.optionB.trim(),
+            optionC: q.optionC.trim(),
+            optionD: q.optionD.trim(),
+            correctAnswer: String(
+              q.correctAnswer
+            ).toUpperCase(),
+            points:
+              Math.max(
+                1,
+                Math.trunc(Number(q.points ?? 1))
+              ) || 1,
+            explanation:
+              q.explanation?.toString().trim() ||
+              null,
+          })),
+        });
+
+        const total = await tx.question.count({
+          where: { quizId: id.trim() },
+        });
+
+        return {
+          added: created.count,
+          total,
+        };
       }
-      const created = await tx.question.createMany({
-        data: questions.map((q) => ({
-          quizId: id,
-          text: q.text.trim(),
-          optionA: q.optionA.trim(),
-          optionB: q.optionB.trim(),
-          optionC: q.optionC.trim(),
-          optionD: q.optionD.trim(),
-          correctAnswer: String(q.correctAnswer).toUpperCase(),
-          points: Math.max(1, Math.trunc(Number(q.points ?? 1)) || 1),
-          explanation: q.explanation?.toString().trim() || null,
-        })),
-      });
-      const total = await tx.question.count({ where: { quizId: id } });
-      return { added: created.count, total };
-    });
+    );
 
-    return NextResponse.json({ success: true, ...result }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        ...result,
+      },
+      { status: 201 }
+    );
   } catch (err) {
-    console.error("[POST /api/admin/quizzes/[id]/questions] Failed:", err);
+    console.error(
+      "[POST /api/admin/quizzes/[id]/questions] Failed:",
+      err
+    );
+
     return NextResponse.json(
       { error: "Failed to add questions." },
       { status: 500 }
